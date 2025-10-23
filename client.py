@@ -1,53 +1,51 @@
 import socket
 import threading
+from ags import KICK, QUESTION, REPLY, ECHO, PING, decode, msg
 
-class MathGameClient:
+class gameClient:
     def __init__(self, host='localhost', port=5555):
         self.host = host
         self.port = port
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.nickname = input("Введите ваш никнейм: ")
         
-    def receive_messages(self):
-        """Получает сообщения от сервера"""
-        while True:
-            try:
-                message = self.client_socket.recv(1024).decode('utf-8')
-                
-                if message == "EXIT":
-                    print("Вы исключены из игры...")
-                    break
+    def receive(self):
+        msg_type, msg_txt = decode(self.client_socket.recv(1024).decode('utf-8'))
+        return msg_type, msg_txt
 
-                elif message == "NICK":
-                    self.client_socket.send(f"NICKNAME:{self.nickname}".encode('utf-8'))
-                
-                elif message.startswith("PROBLEM:"):
-                    problem = message.split(":")[1]
-                    print(f"\n🎯 Ваша задача: {problem}")
-                    answer = input("Введите ответ: ")
-                    self.client_socket.send(f"ANSWER:{answer}".encode('utf-8'))
-                
-                elif message.startswith("WAIT:"):
-                    print(f"\n{message.split(':')[1]}")
-                
-                else:
-                    print(message)
-                    
-            except:
-                print("❌ Соединение с сервером потеряно")
-                self.client_socket.close()
-                break
+    def send(self, txt):
+        self.client_socket.send(msg(txt, REPLY).encode('utf-8'))
     
-    def start_client(self):
-        """Запускает клиент"""
+    def connect(self):
         try:
             self.client_socket.connect((self.host, self.port))
-            print("✅ Подключение к серверу установлено!")
+            print("Connected to the server!")
 
-            self.receive_messages()
+            while True:
+                msg_type, msg_txt = self.receive()
+
+                if msg_type == KICK:
+                    break
+
+                if msg_type == ECHO:
+                    print(msg_txt)
+                    continue
+
+                if msg_type == QUESTION:
+                    self.send(input(msg_txt))
+                    continue
+            
+            self.disconnect()
+
         except Exception as e:
-            print(f"❌ Ошибка подключения: {e}")
+            print(f"Connection error: {e}")
+
+    def disconnect(self):
+        try:
+            self.client_socket.close()
+            print("Disconnected from the server.")
+        except Exception as e:
+            print(f"Error while disconnecting: {e}")
 
 if __name__ == "__main__":
-    client = MathGameClient()
-    client.start_client()
+    client = gameClient()
+    client.connect()
