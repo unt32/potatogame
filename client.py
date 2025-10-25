@@ -4,8 +4,14 @@ import time
 from ags import KICK, QUESTION, REPLY, ECHO, PING, decode, encode
 
 class GameClient:
-    def __init__(self, host="", port=5555):
-        self.host = socket.gethostname() if host == "" else host
+    def __init__(self, host=None, port=5555):
+        if host:
+            if len(host.split('.')) == 1:
+                host = "192.168.0." + host
+        else:
+            host = socket.gethostname()
+            
+        self.host = host
         self.port = port
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.running = False
@@ -72,5 +78,5 @@ class GameClient:
             print(f"Error while disconnecting: {e}")
 
 if __name__ == "__main__":
-    client = GameClient(input("enter server ip:"))
+    client = GameClient(input("Enter server ip: "))
     client.connect()

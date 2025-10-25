@@ -14,7 +14,7 @@ class GameServer:
         self.players = {}
         self.voted = {}
         self.game_running = False
-        self.curr_ans = True
+        self.curr_ans = ""
         self.answered = False
 
     def sendall(self, msg_type, msg_txt = "", ignore = None):
@@ -39,13 +39,20 @@ class GameServer:
         return msg_type, msg_txt
 
     def tab(self):
-        table = "#######\n"
+        table = "\n##############\n"
         i = 1
         for player in self.players:
             table += f"{i})\t{player}\n"
             i+=1
-        table += "#######\n"
+        table += "##############\n\n"
         return table
+    
+    def mkchallenge(self):
+        a = random.randint(1, 10)
+        b = random.randint(1, 10)
+        task = f"{a} + {b}"
+        answer = f"{a + b}"
+        return task, answer
     
     def game_start(self):
         votes = 0
@@ -53,7 +60,7 @@ class GameServer:
             if value:
                 votes += 1
 
-        if len(self.voted) > votes:
+        if len(self.voted) > votes  or  len(self.voted) < 2:
             return
         
         self.game_running = True
@@ -61,20 +68,28 @@ class GameServer:
         time.sleep(1)
 
         while self.game_running:
+            self.sendall(ECHO, self.tab())
+            
             self.answered = False
-            self.curr_ans = False
+            self.curr_ans = ""
+            task, answer = self.mkchallenge()
 
             rnd_name = random.choice(list(self.players))
             rnd_socket = self.players[rnd_name]
 
-            self.send(rnd_socket, QUESTION, "Finish?(y/N)")
-            self.sendall(ECHO, f"{rnd_name} is solving...", rnd_socket)
+            self.send(rnd_socket, QUESTION, f"Your task is {task} = ?\n[{rnd_name}]")
+            self.sendall(ECHO, f"{rnd_name} is solving {task}", rnd_socket)
 
-            while not self.answered and len(self.players) > 1:
+            while not self.answered and rnd_socket in self.clients:
+                self.send(rnd_socket, PING)
                 time.sleep(1)
 
-            if self.curr_ans:
-                self.send(rnd_socket, KICK, "You are out of the game")
+            if self.curr_ans == answer:
+                self.send(rnd_socket, ECHO, "Correct!")
+                self.sendall(ECHO, f"{rnd_name} solved his task!", rnd_socket)
+            else:
+                if rnd_socket in self.clients:
+                    self.send(rnd_socket, KICK, "Wrong! You are out of the game")
                 self.sendall(ECHO, f"{rnd_name} dropped out!")
 
             time.sleep(1)
@@ -82,7 +97,7 @@ class GameServer:
                 self.game_running = False
 
         time.sleep(1)
-        self.sendall(KICK, "You are winner!\n\n")
+        self.sendall(KICK, "\n\n\nYou are winner!!!\n\n")
         self.stop()
 
     def handle_client(self, client_socket, client_address):
@@ -98,7 +113,7 @@ class GameServer:
 
 
             # Name ask dialog
-            name_question = "What is your name? "
+            name_question = "What is your name?\n[?]"
             while True:
                 self.send(client_socket, QUESTION, name_question)    
                 msg_type, msg_txt = self.receive(client_socket)
@@ -106,7 +121,7 @@ class GameServer:
                     continue
 
                 if msg_txt in self.players:
-                    name_question = f"There is someone with the name {msg_txt}. Please, choose another nick:"
+                    name_question = f"There is someone with the name {msg_txt}. Please, choose another nick:\n[?]"
                     continue
 
                 name = msg_txt
@@ -114,7 +129,7 @@ class GameServer:
                 self.voted[name] = False
                 print(f"Client {client_address} says their name is: {name}")
                 
-                echo_msg = f"Hello, {name}! Welcome to the game server!"
+                echo_msg = f"Hello, [{name}]! Welcome to the game server!"
                 self.send(client_socket, ECHO, echo_msg)
                 break
             
@@ -125,12 +140,17 @@ class GameServer:
                     
                 msg_type, msg_txt = self.receive(client_socket)
                 if msg_type == REPLY:
-                    if msg_txt.lower() == "vote":
+                    if msg_txt.lower() == "start":
                         self.voted[name] = True
                         break
+                    
+                    if msg_txt.lower() == "help":
+                        self.send(client_socket, ECHO, f"\nType \n\thelp - for this message\n\texit - exit\n\tstart - start the game\n\t<enter> to list players")
+                        continue
 
                     if msg_txt.lower() == "exit":
-                        break
+                        self.send(client_socket, KICK)
+                        continue
 
                     self.send(client_socket, ECHO, self.tab())
 
@@ -138,7 +158,6 @@ class GameServer:
 
             # Waiting for all
             while not self.game_running:
-                self.send(client_socket, ECHO, self.tab())
                 time.sleep(1)
 
 
@@ -146,8 +165,7 @@ class GameServer:
             while self.game_running:
                 msg_type, msg_txt = self.receive(client_socket)
                 if msg_type == REPLY:
-                    if msg_txt.lower() == "y":
-                        self.curr_ans = True
+                    self.curr_ans = msg_txt
                     self.answered = True
                     
 
@@ -207,5 +225,5 @@ class GameServer:
         print("Server stopped")
 
 if __name__ == "__main__":
-    server = GameServer(socket.gethostname())
+    server = GameServer("0.0.0.0")
     server.start()
