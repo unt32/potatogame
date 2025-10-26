@@ -1,6 +1,6 @@
 import socket
 import threading
-import time
+from time import sleep
 import random
 from ags import QUESTION, REPLY, PING, KICK, ECHO, encode, decode
 
@@ -38,6 +38,7 @@ class GameServer:
 #            print(f"\n###\nPING by {client}\n###\n")
         return msg_type, msg_txt
 
+    # just list of players
     def tab(self):
         table = "\n##############\n"
         i = 1
@@ -55,6 +56,12 @@ class GameServer:
         return task, answer
     
     def game_start(self):
+        
+        # Removing disconnected clients
+        self.sendall(PING)
+        sleep(1)
+        
+        # Counting connected 
         votes = 0
         for _, value in self.voted.items():
             if value:
@@ -62,10 +69,11 @@ class GameServer:
 
         if len(self.voted) > votes  or  len(self.voted) < 2:
             return
+        # If (all have voted) and (num of players) >= 2
         
         self.game_running = True
-        self.sendall(ECHO, "Game started!")
-        time.sleep(1)
+        self.sendall(ECHO, "Game started!\n")
+        sleep(1)
 
         while self.game_running:
             self.sendall(ECHO, self.tab())
@@ -77,31 +85,30 @@ class GameServer:
             rnd_name = random.choice(list(self.players))
             rnd_socket = self.players[rnd_name]
 
-            self.send(rnd_socket, QUESTION, f"Your task is {task} = ?\n[{rnd_name}]")
-            self.sendall(ECHO, f"{rnd_name} is solving {task}", rnd_socket)
+            self.send(rnd_socket, QUESTION, f"Your task is {task} = ?\n[{rnd_name}] ")
+            self.sendall(ECHO, f"{rnd_name} is solving {task}\n", rnd_socket)
 
+            # waiting for answer and looking if choosed is connected
             while not self.answered and rnd_socket in self.clients:
                 self.send(rnd_socket, PING)
-                time.sleep(1)
+                sleep(1)
 
             if self.curr_ans == answer:
-                self.send(rnd_socket, ECHO, "Correct!")
-                self.sendall(ECHO, f"{rnd_name} solved his task!", rnd_socket)
+                self.send(rnd_socket, ECHO, "Correct!\n")
+                self.sendall(ECHO, f"{rnd_name} solved his task!\n", rnd_socket)
             else:
                 if rnd_socket in self.clients:
-                    self.send(rnd_socket, KICK, "Wrong! You are out of the game")
-                self.sendall(ECHO, f"{rnd_name} dropped out!")
+                    self.send(rnd_socket, KICK, "Wrong! You are out of the game\n")
+                self.sendall(ECHO, f"{rnd_name} dropped out!\n")
 
-            time.sleep(1)
             if len(self.players) < 2:
                 self.game_running = False
+            sleep(1)
 
-        time.sleep(1)
         self.sendall(KICK, "\n\n\nYou are winner!!!\n\n")
         self.stop()
 
     def handle_client(self, client_socket, client_address):
-          
         print(f"New connection from {client_address}")
         self.clients.append(client_socket)
         
@@ -109,11 +116,11 @@ class GameServer:
             # Start the connection verification thread
             #threading.Thread(target=self.verify_connection, daemon = True, args = (client_socket,)).start()
             if self.game_running:
-                self.send(client_socket, KICK, "Wait! Server is busy!")
+                self.send(client_socket, KICK, "Wait! Server is busy!\n")
 
 
             # Name ask dialog
-            name_question = "What is your name?\n[?]"
+            name_question = "What is your name?\n[?] "
             while True:
                 self.send(client_socket, QUESTION, name_question)    
                 msg_type, msg_txt = self.receive(client_socket)
@@ -121,7 +128,7 @@ class GameServer:
                     continue
 
                 if msg_txt in self.players:
-                    name_question = f"There is someone with the name {msg_txt}. Please, choose another nick:\n[?]"
+                    name_question = f"Please, choose another nick:\n[?]"
                     continue
 
                 name = msg_txt
@@ -129,13 +136,13 @@ class GameServer:
                 self.voted[name] = False
                 print(f"Client {client_address} says their name is: {name}")
                 
-                echo_msg = f"Hello, [{name}]! Welcome to the game server!"
+                echo_msg = f"Hello, [{name}]! Welcome to the game server!\n"
                 self.send(client_socket, ECHO, echo_msg)
                 break
             
             # Pre game menu
             while True:
-                question = f"[{name}]"
+                question = f"[{name}] "
                 self.send(client_socket, QUESTION, question)
                     
                 msg_type, msg_txt = self.receive(client_socket)
@@ -145,7 +152,7 @@ class GameServer:
                         break
                     
                     if msg_txt.lower() == "help":
-                        self.send(client_socket, ECHO, f"\nType \n\thelp - for this message\n\texit - exit\n\tstart - start the game\n\t<enter> to list players")
+                        self.send(client_socket, ECHO, f"\nType \n\thelp - for this message\n\texit - exit\n\tstart - start the game\n\t<enter> to list players\n")
                         continue
 
                     if msg_txt.lower() == "exit":
@@ -154,11 +161,14 @@ class GameServer:
 
                     self.send(client_socket, ECHO, self.tab())
 
+
+            # try start game
             threading.Thread(target=self.game_start, daemon = True).start()
 
             # Waiting for all
             while not self.game_running:
-                time.sleep(1)
+                self.send(client_socket, PING)
+                sleep(1)
 
 
             # Playing
@@ -169,7 +179,7 @@ class GameServer:
                     self.answered = True
                     
 
-            goodbye_msg = "Thank you for playing! Connection will be closed."
+            goodbye_msg = "Thank you for playing! Connection will be closed.\n"
             self.send(client_socket, KICK, goodbye_msg)
         except Exception as e:
             print(f"\n\nError handling client {client_address}: {e}\n\n")
@@ -182,11 +192,14 @@ class GameServer:
                 break
         client_socket.close()
         print(f"Connection with {client_address} closed({len(self.clients)})")
+        
+        # try start game
+        threading.Thread(target=self.game_start, daemon = True).start()
 
     def verify_connection(self, client):
         while client in self.clients:
             self.send(client, PING)
-            time.sleep(1)
+            sleep(1)
     
     def start(self):
          

@@ -43,7 +43,7 @@ class GameClient:
                 msg_type, msg_txt = self.receive()
 
                 if msg_txt != "":
-                    print(msg_txt)
+                    print(msg_txt, end="")
 
                 if msg_type == KICK:
                     self.running = False
